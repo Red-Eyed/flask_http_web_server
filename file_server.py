@@ -1,3 +1,4 @@
+import argparse
 import json
 import mimetypes
 import os
@@ -10,6 +11,8 @@ import humanize
 from flask import Flask, make_response, request, render_template, send_file, Response
 from flask.views import MethodView
 from werkzeug.utils import secure_filename
+
+from utils import create_self_signed_cert, get_hostname
 
 app = Flask(__name__, static_url_path='/assets', static_folder='assets')
 root = Path("/tmp")
@@ -104,7 +107,7 @@ def partial_response(path, start, end=None):
 
 def get_range(request):
     range = request.headers.get('Range')
-    m = re.match('bytes=(?P<start>\d+)-(?P<end>\d+)?', range)
+    m = re.match(r'bytes=(?P<start>\d+)-(?P<end>\d+)?', range)
     if m:
         start = m.group('start')
         end = m.group('end')
@@ -125,6 +128,7 @@ class PathView(MethodView):
         if path.is_dir():
             contents = []
             total = {'size': 0, 'dir': 0, 'file': 0}
+
             for filepath in path.iterdir():
                 filename = filepath.name
 
@@ -132,6 +136,7 @@ class PathView(MethodView):
                     continue
                 if hide_dotfile == 'yes' and filename[0] == '.':
                     continue
+
                 stat_res = os.stat(str(filepath))
                 info = dict()
                 info['name'] = filename
@@ -143,9 +148,11 @@ class PathView(MethodView):
                 info['size'] = sz
                 total['size'] += sz
                 contents.append(info)
+
             page = render_template('index.html', path=p, contents=contents, total=total, hide_dotfile=hide_dotfile)
             res = make_response(page, 200)
             res.set_cookie('hide-dotfile', hide_dotfile, max_age=16070400)
+
         elif path.is_file():
             if 'Range' in request.headers:
                 start, end = get_range(request)
@@ -155,6 +162,7 @@ class PathView(MethodView):
                 res.headers.add('Content-Disposition', 'attachment')
         else:
             res = make_response('Not found', 404)
+
         return res
 
     def post(self, p=''):
@@ -178,6 +186,7 @@ class PathView(MethodView):
             else:
                 info['status'] = 'error'
                 info['msg'] = 'Invalid Operation'
+
             res = make_response(json.JSONEncoder().encode(info), 200)
             res.headers.add('Content-type', 'application/json')
         else:
@@ -186,16 +195,38 @@ class PathView(MethodView):
             info['msg'] = 'Authentication failed'
             res = make_response(json.JSONEncoder().encode(info), 401)
             res.headers.add('Content-type', 'application/json')
+
         return res
 
 
-path_view = PathView.as_view('path_view')
-app.add_url_rule('/', view_func=path_view)
-app.add_url_rule('/<path:p>', view_func=path_view)
-
 if __name__ == '__main__':
-    bind = os.getenv('FS_BIND', '0.0.0.0')
-    port = os.getenv('FS_PORT', '8000')
-    root = Path(os.path.normpath(os.getenv('FS_PATH', '/tmp')))
-    key = os.getenv('FS_KEY')
-    app.run(bind, port, threaded=True, debug=False, ssl_context=('/home/redeyed/Projects/others/python_ftp_server/temp/cert_file.crt', '/home/redeyed/Projects/others/python_ftp_server/temp/key_file.key'))
+    parser = argparse.ArgumentParser(description="WEB server for file transfer",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("-d", "--dir", type=Path, default=Path().cwd())
+    parser.add_argument("--ip", type=str, default=get_hostname())
+    parser.add_argument("--port", type=int, default=60000)
+
+    args = parser.parse_args()
+
+    path_view = PathView.as_view('path_view')
+    app.add_url_rule('/', view_func=path_view)
+    app.add_url_rule('/<path:p>', view_func=path_view)
+
+    root = Path(args.dir)
+
+    ip = str(args.ip)
+    port = str(args.port)
+
+    temp_dir = Path(__file__).absolute().parent / "temp"
+    temp_dir.mkdir(exist_ok=True)
+
+    cert_file = temp_dir / "cert_file.crt"
+    key_file = temp_dir / "key_file.key"
+    create_self_signed_cert(cert_file, key_file)
+
+    app.run(host=ip,
+            port=port,
+            threaded=True,
+            debug=False,
+            ssl_context=(str(cert_file), str(key_file)))

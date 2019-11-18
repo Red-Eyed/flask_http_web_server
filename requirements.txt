@@ -1,3 +1,6 @@
 flask
 humanize
 werkzeug
+requests
+pyopenssl
+pysendfile
