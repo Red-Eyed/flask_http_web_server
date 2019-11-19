@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import json
 import mimetypes
@@ -10,13 +12,17 @@ from pathlib import Path
 import humanize
 from flask import Flask, make_response, request, render_template, send_file, Response
 from flask.views import MethodView
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from utils import create_self_signed_cert, get_hostname
+from utils import create_self_signed_cert, get_hostname, generate_password, get_local_ip, get_global_ip
 
 app = Flask(__name__, static_url_path='/assets', static_folder='assets')
 root = Path("/tmp")
 key = ""
+users = {}
+auth = HTTPBasicAuth()
 
 ignored = ['.bzr', '$RECYCLE.BIN', '.DAV', '.DS_Store', '.git', '.hg', '.htaccess', '.htpasswd', '.Spotlight-V100',
            '.svn', '__MACOSX', 'ehthumbs.db', 'robots.txt', 'Thumbs.db', 'thumbs.tps']
@@ -29,6 +35,13 @@ icontypes = {'fa-music': 'm4a,mp3,oga,ogg,webma,wav', 'fa-archive': '7z,zip,rar,
              'fa-film': '3g2,3gp,3gp2,3gpp,mov,qt',
              'fa-code': 'atom,plist,bat,bash,c,cmd,coffee,css,hml,js,json,java,less,markdown,md,php,pl,py,rb,rss,sass,scpt,swift,scss,sh,xml,yml',
              'fa-file-text-o': 'txt', 'fa-film': 'mp4,m4v,ogv,webm', 'fa-globe': 'htm,html,mhtm,mhtml,xhtm,xhtml'}
+
+
+@auth.verify_password
+def verify_password(username, password):
+    if username in users:
+        return check_password_hash(users.get(username), password)
+    return False
 
 
 @app.template_filter('size_fmt')
@@ -204,14 +217,21 @@ if __name__ == '__main__':
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument("-d", "--dir", type=Path, default=Path().cwd())
-    parser.add_argument("--ip", type=str, default=get_hostname())
+    parser.add_argument("--ip", type=str, default=get_local_ip())
     parser.add_argument("--port", type=int, default=60000)
+    parser.add_argument("-u", "--user", type=str, default="nano")
+    parser.add_argument("-p", "--passwd", type=str, default=generate_password(10))
 
     args = parser.parse_args()
 
     path_view = PathView.as_view('path_view')
-    app.add_url_rule('/', view_func=path_view)
-    app.add_url_rule('/<path:p>', view_func=path_view)
+
+    path_view_auth = auth.login_required(path_view)
+    app.add_url_rule('/', view_func=path_view_auth)
+
+    app.add_url_rule('/<path:p>', view_func=path_view_auth)
+
+    users.update({args.user: generate_password_hash(args.passwd)})
 
     root = Path(args.dir)
 
@@ -224,6 +244,14 @@ if __name__ == '__main__':
     cert_file = temp_dir / "cert_file.crt"
     key_file = temp_dir / "key_file.key"
     create_self_signed_cert(cert_file, key_file)
+
+    print("\n\n\n\n")
+    print(f"Local address: https://{get_local_ip()}:{args.port}")
+    print(f"Global address: https://{get_global_ip()}:{args.port}")
+
+    print(f"User: {args.user}")
+    print(f"Password: {args.passwd}")
+    print()
 
     app.run(host=ip,
             port=port,

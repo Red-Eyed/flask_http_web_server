@@ -1,6 +1,7 @@
 flask
-humanize
+flask_httpauth
 werkzeug
-requests
 pyopenssl
 pysendfile
+requests
+humanize
