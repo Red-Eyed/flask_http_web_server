@@ -145,7 +145,12 @@ class PathView(MethodView):
     def get(self, p=''):
         hide_dotfile = request.args.get('hide-dotfile', request.cookies.get('hide-dotfile', 'yes'))
 
-        path = root / p
+        path: Path = root / p
+        path = path.resolve().absolute()
+
+        if str(root) not in str(path):
+            res = make_response('Not found', 404)
+            return res
 
         if path.is_dir():
             contents = []
@@ -211,7 +216,6 @@ class PathView(MethodView):
         res = make_response(json.JSONEncoder().encode(info), 200)
         res.headers.add('Content-type', 'application/json')
 
-
         return res
 
 
@@ -235,11 +239,9 @@ if __name__ == '__main__':
 
     users.update({args.user: generate_password_hash(args.passwd)})
 
-    root = Path(args.dir)
+    root = Path(args.dir).resolve().absolute()
 
     port = str(args.port)
-
-
 
     cert_file = temp_dir / "cert_file.crt"
     key_file = temp_dir / "key_file.key"
