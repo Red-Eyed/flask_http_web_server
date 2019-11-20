@@ -16,11 +16,21 @@ from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from utils import create_self_signed_cert, get_hostname, generate_password, get_local_ip, get_global_ip
+from utils import create_self_signed_cert, generate_password, get_local_ip, get_global_ip
+
+temp_dir = Path(__file__).with_name("temp")
+temp_dir.mkdir(exist_ok=True)
+
+secret_key_file = temp_dir / "app_secret_key"
+secret_key_file.touch()
 
 app = Flask(__name__, static_url_path='/assets', static_folder='assets')
+app.secret_key = secret_key_file.read_text()
+
+if len(app.secret_key) == 0:
+    secret_key_file.write_text(generate_password(10))
+
 root = Path("/tmp")
-key = ""
 users = {}
 auth = HTTPBasicAuth()
 
@@ -32,7 +42,6 @@ datatypes = {'audio': 'm4a,mp3,oga,ogg,webma,wav', 'archive': '7z,zip,rar,gz,tar
              'text': 'txt', 'video': 'mp4,m4v,ogv,webm', 'website': 'htm,html,mhtm,mhtml,xhtm,xhtml'}
 icontypes = {'fa-music': 'm4a,mp3,oga,ogg,webma,wav', 'fa-archive': '7z,zip,rar,gz,tar',
              'fa-picture-o': 'gif,ico,jpe,jpeg,jpg,png,svg,webp', 'fa-file-text': 'pdf',
-             'fa-film': '3g2,3gp,3gp2,3gpp,mov,qt',
              'fa-code': 'atom,plist,bat,bash,c,cmd,coffee,css,hml,js,json,java,less,markdown,md,php,pl,py,rb,rss,sass,scpt,swift,scss,sh,xml,yml',
              'fa-file-text-o': 'txt', 'fa-film': 'mp4,m4v,ogv,webm', 'fa-globe': 'htm,html,mhtm,mhtml,xhtm,xhtml'}
 
@@ -134,7 +143,7 @@ def get_range(request):
 
 class PathView(MethodView):
     def get(self, p=''):
-        hide_dotfile = request.args.get('hide-dotfile', request.cookies.get('hide-dotfile', 'no'))
+        hide_dotfile = request.args.get('hide-dotfile', request.cookies.get('hide-dotfile', 'yes'))
 
         path = root / p
 
@@ -142,12 +151,12 @@ class PathView(MethodView):
             contents = []
             total = {'size': 0, 'dir': 0, 'file': 0}
 
-            for filepath in path.iterdir():
+            for filepath in [Path("../")] + list(path.iterdir()):
                 filename = filepath.name
 
                 if filename in ignored:
                     continue
-                if hide_dotfile == 'yes' and filename[0] == '.':
+                if filepath.is_file() and hide_dotfile == 'yes' and filename[0] == '.':
                     continue
 
                 stat_res = os.stat(str(filepath))
@@ -179,35 +188,29 @@ class PathView(MethodView):
         return res
 
     def post(self, p=''):
-        if request.cookies.get('auth_cookie') == key:
-            path = root / p
-            path.mkdir(parents=True, exist_ok=True)
+        path = root / p
+        path.mkdir(parents=True, exist_ok=True)
 
-            info = {}
-            if path.is_dir():
-                files = request.files.getlist('files[]')
-                for file in files:
-                    try:
-                        filename = secure_filename(file.filename)
-                        file.save(str(path / filename))
-                    except Exception as e:
-                        info['status'] = 'error'
-                        info['msg'] = str(e)
-                    else:
-                        info['status'] = 'success'
-                        info['msg'] = 'File Saved'
-            else:
-                info['status'] = 'error'
-                info['msg'] = 'Invalid Operation'
-
-            res = make_response(json.JSONEncoder().encode(info), 200)
-            res.headers.add('Content-type', 'application/json')
+        info = {}
+        if path.is_dir():
+            files = request.files.getlist('files[]')
+            for file in files:
+                try:
+                    filename = secure_filename(file.filename)
+                    file.save(str(path / filename))
+                except Exception as e:
+                    info['status'] = 'error'
+                    info['msg'] = str(e)
+                else:
+                    info['status'] = 'success'
+                    info['msg'] = 'File Saved'
         else:
-            info = dict()
             info['status'] = 'error'
-            info['msg'] = 'Authentication failed'
-            res = make_response(json.JSONEncoder().encode(info), 401)
-            res.headers.add('Content-type', 'application/json')
+            info['msg'] = 'Invalid Operation'
+
+        res = make_response(json.JSONEncoder().encode(info), 200)
+        res.headers.add('Content-type', 'application/json')
+
 
         return res
 
@@ -217,7 +220,6 @@ if __name__ == '__main__':
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument("-d", "--dir", type=Path, default=Path().cwd())
-    parser.add_argument("--ip", type=str, default=get_local_ip())
     parser.add_argument("--port", type=int, default=60000)
     parser.add_argument("-u", "--user", type=str, default="nano")
     parser.add_argument("-p", "--passwd", type=str, default=generate_password(10))
@@ -235,25 +237,23 @@ if __name__ == '__main__':
 
     root = Path(args.dir)
 
-    ip = str(args.ip)
     port = str(args.port)
 
-    temp_dir = Path(__file__).with_name("temp")
-    temp_dir.mkdir(exist_ok=True)
+
 
     cert_file = temp_dir / "cert_file.crt"
     key_file = temp_dir / "key_file.key"
     create_self_signed_cert(cert_file, key_file)
 
-    print("\n\n\n\n")
+    print("\n\n")
     print(f"Local address: https://{get_local_ip()}:{args.port}")
     print(f"Global address: https://{get_global_ip()}:{args.port}")
 
     print(f"User: {args.user}")
     print(f"Password: {args.passwd}")
-    print()
+    print("\n")
 
-    app.run(host=ip,
+    app.run(host=get_local_ip(),
             port=port,
             threaded=True,
             debug=False,
