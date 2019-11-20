@@ -238,7 +238,7 @@ if __name__ == '__main__':
     ip = str(args.ip)
     port = str(args.port)
 
-    temp_dir = Path(__file__).absolute().parent / "temp"
+    temp_dir = Path(__file__).with_name("temp")
     temp_dir.mkdir(exist_ok=True)
 
     cert_file = temp_dir / "cert_file.crt"
