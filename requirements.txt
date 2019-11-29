@@ -5,3 +5,4 @@ pyopenssl
 pysendfile
 requests
 humanize
+natsort

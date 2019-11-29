@@ -13,6 +13,7 @@ import humanize
 from flask import Flask, make_response, request, render_template, send_file, Response
 from flask.views import MethodView
 from flask_httpauth import HTTPBasicAuth
+from natsort import natsorted
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -156,7 +157,7 @@ class PathView(MethodView):
             contents = []
             total = {'size': 0, 'dir': 0, 'file': 0}
 
-            for filepath in [Path("../")] + list(path.iterdir()):
+            for filepath in natsorted([Path("../")] + list(path.iterdir()), reverse=True):
                 filename = filepath.name
 
                 if filename in ignored:
