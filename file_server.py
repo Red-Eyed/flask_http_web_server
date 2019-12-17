@@ -157,7 +157,7 @@ class PathView(MethodView):
             contents = []
             total = {'size': 0, 'dir': 0, 'file': 0}
 
-            for filepath in natsorted([Path("../")] + list(path.iterdir()), reverse=True):
+            for filepath in [Path("../")] + natsorted(path.iterdir(), reverse=True):
                 filename = filepath.name
 
                 if filename in ignored:
