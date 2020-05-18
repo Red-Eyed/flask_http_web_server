@@ -4,6 +4,7 @@ import string
 from pathlib import Path
 
 import requests
+import upnpclient
 from OpenSSL import crypto
 
 
@@ -58,3 +59,21 @@ def create_self_signed_cert(cert_file: Path, key_file: Path):
 
     with open(str(key_file), "wt") as f:
         f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k).decode("utf8"))
+
+
+def upnp_add_port_mapping(internal_port: int, external_port: int, ip: str, name: str):
+    devices = upnpclient.discover()
+
+    for d in devices:
+        if hasattr(d, "WANIPConn1"):
+            print(d.WANIPConn1.GetStatusInfo())
+
+            d.WANIPConn1.AddPortMapping(
+                NewRemoteHost="",
+                NewExternalPort=external_port,
+                NewProtocol='TCP',
+                NewInternalPort=internal_port,
+                NewInternalClient=ip,
+                NewEnabled='1',
+                NewPortMappingDescription=name,
+                NewLeaseDuration=0)

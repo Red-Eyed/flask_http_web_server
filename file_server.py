@@ -17,7 +17,7 @@ from natsort import natsorted
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from utils import create_self_signed_cert, generate_password, get_local_ip, get_global_ip
+from utils import create_self_signed_cert, generate_password, get_local_ip, get_global_ip, upnp_add_port_mapping
 
 temp_dir = Path(__file__).with_name("temp")
 temp_dir.mkdir(exist_ok=True)
@@ -247,6 +247,11 @@ if __name__ == '__main__':
     cert_file = temp_dir / "cert_file.crt"
     key_file = temp_dir / "key_file.key"
     create_self_signed_cert(cert_file, key_file)
+
+    upnp_add_port_mapping(internal_port=args.port,
+                          external_port=args.port,
+                          ip=get_local_ip(),
+                          name=__name__)
 
     print("\n\n")
     print(f"Local address: https://{get_local_ip()}:{args.port}")

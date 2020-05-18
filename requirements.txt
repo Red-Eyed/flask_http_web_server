@@ -6,3 +6,4 @@ pysendfile
 requests
 humanize
 natsort
+upnpclient
